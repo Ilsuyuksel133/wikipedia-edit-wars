@@ -1,0 +1,16 @@
+requests
+pandas
+numpy
+matplotlib
+seaborn
+networkx
+python-louvain
+plotly
+pyvis
+scikit-learn
+xgboost
+lightgbm
+shap
+nltk
+tqdm
+jupyter
