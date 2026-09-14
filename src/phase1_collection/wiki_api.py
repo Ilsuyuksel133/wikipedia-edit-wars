@@ -28,7 +28,11 @@ def fetch_page_revisions(title, max_revisions=None):
         "redirects": 1,  # "Armenian Genocide" gibi yönlendirme sayfalarını gerçek makaleye çözer
         "rvlimit": 500,
         "rvprop": "ids|timestamp|user|userid|comment|size|flags|sha1|tags",
-        "rvdir": "newer",
+        # "older": en YENİ revizyondan geriye doğru gidiyoruz. max_revisions
+        # sınırına çoğu sayfa çarptığı için (bkz. Faz 2'deki bulgu), "newer"
+        # kullanırsak kalabalık sayfaların sadece en ESKİ döneminin verisini
+        # alırdık — edit war analizi için asıl önemli olan GÜNCEL dönem.
+        "rvdir": "older",
     }
 
     fetched = 0
