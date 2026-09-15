@@ -32,16 +32,19 @@ wikipedia-edit-wars/
 
 ## Fazlar
 
-| Faz | İçerik | Durum |
-|---|---|---|
-| 1 | Veri Toplama | ⬜ |
-| 2 | Veri Temizleme & Özellik Çıkarımı | ⬜ |
-| 3 | Zaman Serisi Analizi | ⬜ |
-| 4 | Network Analizi | ⬜ |
-| 5 | NLP Katmanı | ⬜ |
-| 6 | Model 1 — Revert Prediction | ⬜ |
-| 7 | Model 2 — Edit War Öngörüsü | ⬜ |
-| 8 | Sentez & Sunum | ⬜ |
+| Faz | İçerik | Durum | Çalıştırma |
+|---|---|---|---|
+| 1 | Veri Toplama | ✅ | `python -m src.phase1_collection.fetch_revisions` |
+| 2 | Veri Temizleme & Özellik Çıkarımı | ✅ | `python -m src.phase2_cleaning.run_phase2` |
+| 3 | Zaman Serisi Analizi | ✅ | `python -m src.phase3_timeseries.run_phase3` |
+| 4 | Network Analizi | ✅ | `python -m src.phase4_network.run_phase4` |
+| 5 | NLP Katmanı | ✅ | `python -m src.phase5_nlp.run_phase5` |
+| 6 | Model 1 — Revert Prediction | ✅ | `python -m src.phase6_model_revert.run_phase6` |
+| 7 | Model 2 — Edit War Öngörüsü | ✅ | `python -m src.phase7_model_editwar.run_phase7` |
+| 8 | Sentez & Sunum | ✅ | `notebooks/synthesis.ipynb` |
+
+Fazlar birbirine bağımlı, sırayla çalıştırılmalı (her biri bir öncekinin
+ürettiği SQLite tablolarını okur).
 
 ## Kurulum
 
@@ -53,6 +56,47 @@ pip install -r requirements.txt
 
 ## Veritabanı
 
-`data/raw/wikipedia_edit_wars.db` (SQLite) — şema `src/db/schema.py` içinde tanımlı.
+`data/raw/wikipedia_edit_wars.db` (SQLite, `.gitignore`'da — repoya dahil değil,
+her kurulumda Faz 1'den itibaren yeniden üretilir).
 
-Ana tablo: `revisions` (page_id, user, timestamp, size_diff, comment, is_revert, ...)
+| Tablo | Üreten faz | İçerik |
+|---|---|---|
+| `pages`, `revisions` | 1 | Ham revizyon verisi |
+| `revisions_clean` | 2 | Bot filtresi, revert tespiti, editör feature'ları |
+| `page_conflict_scores` | 2 | Sayfa başına çatışma metrikleri |
+| `editor_network_features`, `page_network_features` | 4 | Merkezilik, topluluk, çekişme çekirdeği |
+| `revisions_nlp` | 5 | Sentiment, çatışma anahtar kelimesi |
+
+## Bulgular (Özet)
+
+Detaylı analiz için `notebooks/synthesis.ipynb`. Öne çıkanlar:
+
+**En çatışmalı 5 sayfa** (Faz 4'te doğrulanmış `core_conflict_ratio`'ya göre —
+sayfadaki editörlerin ne kadarı gerçek karşılıklı-revert "çekişme çekirdeğinde"):
+Taiwan, Abortion, Zionism, Israeli–Palestinian conflict, Russo-Ukrainian war
+(2022–present) — hepsi tartışmalı grup, kontrol grubundan hiçbiri ilk 5'te değil.
+
+**Tipik bir edit war'ın anatomisi:** Ham `revert_rate` yanıltıcı çıktı —
+kontrol sayfaları (okul ödevi konuları: "List of prime numbers", "Water
+cycle") anonim vandalizim yüzünden YÜKSEK revert oranına sahip ama bu
+"sığ" (%50+ anonim, dağınık, tek seferlik). Tartışmalı sayfalarda revert
+oranı görece düşük ama "derin" (~%13 anonim, az sayıda kayıtlı editör
+arasında TEKRARLANAN karşılıklı revert). Gerçek ayırt edici metrik ham
+oran değil, **karşılıklı revert çifti sayısı / çekişme çekirdeği oranı**.
+
+**Model karşılaştırması:**
+
+| Model | En iyi | ROC-AUC | Not |
+|---|---|---|---|
+| 1 — Revert Prediction (revizyon seviyesi) | XGBoost | 0.893 | En güçlü feature: editörün geçmiş "geri alınma" oranı |
+| 2 — Edit War Öngörüsü (sayfa-hafta seviyesi) | Logistic Regression | 0.755 | Sinyal gerçek ama precision düşük — 40 sayfalık veri setinde çekişme olayları doğası gereği seyrek |
+
+**Metodolojik dersler** (proje boyunca bulunup düzeltilen sorunlar — hepsi
+`git log` içinde detaylı anlatılıyor):
+- Wikipedia redirect sayfaları (`redirects=1` olmadan yanlış sayfa çekiliyor)
+- Sayfa başına istekler arası bekleme yetmiyor, TÜM istekler arası gerekiyor (429 hatası)
+- `rvdir=newer` kalabalık sayfaların sadece en eski (en sakin) dönemini veriyor
+- Bot filtresi `bot$` yerine `bot\b` olmalı (örn. "ClueBot NG" kaçıyordu)
+- `networkx` betweenness'e ağırlığı doğrudan vermek "mesafe" olarak yorumlanıyor, "güç" değil
+- Model 1'de Faz 2/4'ün tüm-geçmiş özet tablolarını kullanmak veri sızıntısı olurdu — kayan pencere gerekti
+- Model 2'de 1 haftalık hedef çok seyrekti (%0.8 pozitif) — 4 haftaya genişletmek gerekti
